@@ -33,7 +33,7 @@ class _ResponsesScreenState extends State<ResponsesScreen> {
     _progressSubscription = widget.uploader.progress.listen((progress) {
       final task = _tasks[progress.taskId];
       print(
-          'In MAIN APP: ID: ${progress.taskId}, progress: ${progress.progress}');
+          'IN MAIN APP: ID: ${progress.taskId}, progress: ${progress.progress}');
       if (task == null) return;
       if (task.isCompleted()) return;
 

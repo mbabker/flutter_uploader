@@ -2,27 +2,30 @@
 
 import 'dart:io';
 
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_uploader/flutter_uploader.dart';
 import 'package:flutter_uploader_example/responses_screen.dart';
 import 'package:flutter_uploader_example/upload_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-const String title = 'FileUpload Sample app';
 final Uri uploadURL = Uri.parse(
   'https://us-central1-flutteruploadertest.cloudfunctions.net/upload',
 );
 
-FlutterUploader _uploader = FlutterUploader();
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+final FlutterUploader uploader = FlutterUploader();
+
+String? selectedNotificationPayload;
 
 void backgroundHandler() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Notice these instances belong to a forked isolate.
-  var uploader = FlutterUploader();
-
   var notifications = FlutterLocalNotificationsPlugin();
+  var uploader = FlutterUploader();
 
   // Only show notifications for unprocessed uploads.
   SharedPreferences.getInstance().then((preferences) {
@@ -30,6 +33,9 @@ void backgroundHandler() {
 
     if (Platform.isAndroid) {
       uploader.progress.listen((progress) {
+        print(
+            'IN BACKGROUND UPLOADER: ID: ${progress.taskId}, progress: ${progress.progress}');
+
         if (processed.contains(progress.taskId)) {
           return;
         }
@@ -59,6 +65,9 @@ void backgroundHandler() {
     }
 
     uploader.result.listen((result) {
+      print(
+          'IN BACKGROUND UPLOADER: ${result.taskId}, status: ${result.status}, statusCode: ${result.statusCode}, headers: ${result.headers}');
+
       if (processed.contains(result.taskId)) {
         return;
       }
@@ -105,11 +114,48 @@ void backgroundHandler() {
   });
 }
 
-void main() => runApp(App());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await uploader.setBackgroundHandler(backgroundHandler);
+
+  final notificationAppLaunchDetails =
+      await flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();
+
+  if (notificationAppLaunchDetails?.didNotificationLaunchApp ?? false) {
+    selectedNotificationPayload = notificationAppLaunchDetails!.payload;
+  }
+
+  const initializationSettingsAndroid =
+      AndroidInitializationSettings('ic_upload');
+
+  final initializationSettingsIOS = IOSInitializationSettings(
+    requestAlertPermission: true,
+    requestBadgePermission: false,
+    requestSoundPermission: false,
+    onDidReceiveLocalNotification:
+        (int id, String? title, String? body, String? payload) async {},
+  );
+
+  final initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+    iOS: initializationSettingsIOS,
+  );
+
+  await flutterLocalNotificationsPlugin.initialize(
+    initializationSettings,
+    onSelectNotification: (String? payload) async {
+      if (payload != null) {
+        debugPrint('notification payload: $payload');
+      }
+      selectedNotificationPayload = payload;
+    },
+  );
+
+  runApp(App());
+}
 
 class App extends StatefulWidget {
-  App({Key? key}) : super(key: key);
-
   @override
   _AppState createState() => _AppState();
 }
@@ -123,40 +169,21 @@ class _AppState extends State<App> {
   void initState() {
     super.initState();
 
-    _uploader.setBackgroundHandler(backgroundHandler);
-
-    var flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-    var initializationSettingsAndroid =
-        AndroidInitializationSettings('ic_upload');
-    var initializationSettingsIOS = IOSInitializationSettings(
-      requestSoundPermission: false,
-      requestBadgePermission: false,
-      requestAlertPermission: true,
-      onDidReceiveLocalNotification:
-          (int id, String? title, String? body, String? payload) async {},
-    );
-    var initializationSettings = InitializationSettings(
-        android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
-    flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
-      onSelectNotification: (payload) async {},
-    );
-
     SharedPreferences.getInstance()
         .then((sp) => sp.getBool('allowCellular') ?? true)
-        .then((result) {
-      if (mounted) {
-        setState(() {
-          allowCellular = result;
-        });
-      }
-    });
+        .then(
+      (result) {
+        if (mounted) {
+          setState(() => allowCellular = result);
+        }
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: title,
+      title: 'FlutterUploader Example',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
@@ -164,16 +191,17 @@ class _AppState extends State<App> {
         appBar: AppBar(
           actions: [
             IconButton(
-              icon: Icon(allowCellular
-                  ? Icons.signal_cellular_connected_no_internet_4_bar
-                  : Icons.wifi_outlined),
+              icon: Icon(
+                allowCellular
+                    ? Icons.signal_cellular_connected_no_internet_4_bar
+                    : Icons.wifi_outlined,
+              ),
               onPressed: () async {
                 final sp = await SharedPreferences.getInstance();
                 await sp.setBool('allowCellular', !allowCellular);
+
                 if (mounted) {
-                  setState(() {
-                    allowCellular = !allowCellular;
-                  });
+                  setState(() => allowCellular = !allowCellular);
                 }
               },
             ),
@@ -181,14 +209,14 @@ class _AppState extends State<App> {
         ),
         body: _currentIndex == 0
             ? UploadScreen(
-                uploader: _uploader,
+                uploader: uploader,
                 uploadURL: uploadURL,
                 onUploadStarted: () {
                   setState(() => _currentIndex = 1);
                 },
               )
             : ResponsesScreen(
-                uploader: _uploader,
+                uploader: uploader,
               ),
         bottomNavigationBar: BottomNavigationBar(
           items: const <BottomNavigationBarItem>[

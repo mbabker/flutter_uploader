@@ -11,16 +11,16 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UploadScreen extends StatefulWidget {
+  final FlutterUploader uploader;
+  final Uri uploadURL;
+  final VoidCallback onUploadStarted;
+
   const UploadScreen({
     Key? key,
     required this.uploader,
     required this.uploadURL,
     required this.onUploadStarted,
   }) : super(key: key);
-
-  final FlutterUploader uploader;
-  final Uri uploadURL;
-  final VoidCallback onUploadStarted;
 
   @override
   _UploadScreenState createState() => _UploadScreenState();
