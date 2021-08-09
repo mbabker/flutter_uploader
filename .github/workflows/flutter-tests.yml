@@ -1,0 +1,87 @@
+name: Flutter Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Run Flutter Tests
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v1
+        with:
+          channel: stable
+
+      - name: Test
+        run: |
+          flutter pub get
+          flutter test
+
+  driver_test_android:
+    needs: test
+    runs-on: macos-10.15
+    name: "Run Driver Tests - Android - API Level ${{ matrix.api-level }} - ${{ matrix.profile }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level:
+          - 29
+          # - 30
+        profile:
+          - Nexus 6
+          - Nexus 9
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v1
+        with:
+          channel: stable
+
+      - name: Run Flutter Driver tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: default
+          arch: x86_64
+          profile: ${{ matrix.profile }}
+          working-directory: ./example
+          script: flutter drive --driver=test_driver/integration_test.dart integration_test/flutter_uploader_test.dart
+
+  driver_test_apple:
+    needs: test
+    runs-on: macos-10.15
+    name: "Run Driver Tests ${{ matrix.device }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        device:
+          - iPhone 11 Pro (14.4)
+          - iPad Pro (12.9-inch) (4th generation) (14.4)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Start simulator
+        run: |
+          UDID=$(
+            xcrun instruments -s |
+            awk \
+              -F ' *[][]' \
+              -v 'device=${{ matrix.device }}' \
+              '$1 == device { print $2 }'
+          )
+          xcrun simctl boot "${UDID:?No Simulator with this name found}"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v1
+        with:
+          channel: stable
+
+      - name: Run Flutter Driver tests
+        working-directory: ./example
+        run: flutter drive --driver=test_driver/integration_test.dart integration_test/flutter_uploader_test.dart
